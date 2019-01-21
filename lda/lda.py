@@ -12,9 +12,9 @@ import lda.utils
 
 logger = logging.getLogger('lda')
 
-PY2 = sys.version_info[0] == 2
-if PY2:
-    range = xrange
+# PY2 = sys.version_info[0] == 2
+# if PY2:
+#     range = xrange
 
 
 class LDA:
@@ -36,6 +36,15 @@ class LDA:
 
     random_state : int or RandomState, optional
         The generator used for the initial topics.
+
+    seed: list
+        Lista
+
+    mode: str or None
+        Mode
+
+    nu: float, default 0.04
+        Dirichlet parameter for distribution over words in seed
 
     Attributes
     ----------
@@ -92,7 +101,7 @@ class LDA:
     """
 
     def __init__(self, n_topics, n_iter=2000, alpha=0.1, eta=0.01, random_state=None,
-                 refresh=10):
+                 refresh=10, seed=[], mode=None, nu=0.04):
         self.n_topics = n_topics
         self.n_iter = n_iter
         self.alpha = alpha
@@ -105,6 +114,12 @@ class LDA:
         if alpha <= 0 or eta <= 0:
             raise ValueError("alpha and eta must be greater than zero")
 
+        if mode not in [None, "seeded", "interactive", "both"]:
+            raise ValueError("mode must be None, 'seeded', 'interactive" or 'both')
+
+        self.mode = [None, "seeded", "interactive", "both"].index(mode)
+        self.seed = seed
+        self.nu = np.matrix([[nu, len(x)] for x in seed])
         # random numbers that are reused
         rng = lda.utils.check_random_state(random_state)
         self._rands = rng.rand(1024**2 // 8)  # 1MiB of random variates
@@ -215,10 +230,10 @@ class LDA:
 
         """
         PZS = np.zeros((len(doc), self.n_topics))
-        for iteration in range(max_iter + 1): # +1 is for initialization
+        for iteration in range(max_iter + 1):  # +1 is for initialization
             PZS_new = self.components_[:, doc].T
             PZS_new *= (PZS.sum(axis=0) - PZS + self.alpha)
-            PZS_new /= PZS_new.sum(axis=1)[:, np.newaxis] # vector to single column matrix
+            PZS_new /= PZS_new.sum(axis=1)[:, np.newaxis]  # vector to single column matrix
             delta_naive = np.abs(PZS_new - PZS).sum()
             logger.debug('transform iter {}, delta {}'.format(iteration, delta_naive))
             PZS = PZS_new
@@ -238,18 +253,22 @@ class LDA:
             Training vector, where n_samples in the number of samples and
             n_features is the number of features. Sparse matrix allowed.
         """
-        random_state = lda.utils.check_random_state(self.random_state)
+        # random_state = lda.utils.check_random_state(self.random_state)
         rands = self._rands.copy()
         self._initialize(X)
         for it in range(self.n_iter):
             # FIXME: using numpy.roll with a random shift might be faster
-            random_state.shuffle(rands)
+            # random_state.shuffle(rands)
+            rands = np.roll(rands, np.random.randint(1000))
             if it % self.refresh == 0:
                 ll = self.loglikelihood()
                 logger.info("<{}> log likelihood: {:.0f}".format(it, ll))
-                # keep track of loglikelihoods for monitoring convergence
                 self.loglikelihoods_.append(ll)
-            self._sample_topics(rands)
+            if self.mode == 0:
+                self._sample_topics(rands)
+            elif self.mode >= 2:
+                self._sample_topics_interactive(rands)
+
         ll = self.loglikelihood()
         logger.info("<{}> log likelihood: {:.0f}".format(self.n_iter - 1, ll))
         # note: numpy /= is integer division
@@ -269,6 +288,7 @@ class LDA:
         D, W = X.shape
         N = int(X.sum())
         n_topics = self.n_topics
+        n_seeds = len(self.seed)
         n_iter = self.n_iter
         logger.info("n_documents: {}".format(D))
         logger.info("vocab_size: {}".format(W))
@@ -278,18 +298,36 @@ class LDA:
 
         self.nzw_ = nzw_ = np.zeros((n_topics, W), dtype=np.intc)
         self.ndz_ = ndz_ = np.zeros((D, n_topics), dtype=np.intc)
+        self.nzs_ = nzs_ = np.zeros((n_topics, n_seeds), dtype=np.intc)
         self.nz_ = nz_ = np.zeros(n_topics, dtype=np.intc)
 
         self.WS, self.DS = WS, DS = lda.utils.matrix_to_lists(X)
         self.ZS = ZS = np.empty_like(self.WS, dtype=np.intc)
+        self.SW = SW = np.full_like(self.WS, -1, dtype=np.intc)
+
+        seed = {}
+        for index, constrain in enumerate(self.seed):
+            for word in constrain:
+                seed[word] = index
+
         np.testing.assert_equal(N, len(WS))
+        np.testing.assert_equal(N, len(SW))
         for i in range(N):
             w, d = WS[i], DS[i]
+
+            # (1) Asignar el tópico según distribución dirichlet
+            # (2) Asignar el tópico según random
+            # (3) Asignar el tópico según i%n_topics
+
             z_new = i % n_topics
-            ZS[i] = z_new
+            ZS[i] = z_new  # pylint: disable=E1137
             ndz_[d, z_new] += 1
             nzw_[z_new, w] += 1
             nz_[z_new] += 1
+            if self.mode >= 2 and w in seed:
+                SW[i] = seed[w]  # pylint: disable=E1137
+                nzs_[z_new, seed[w]] += 1
+
         self.loglikelihoods_ = []
 
     def loglikelihood(self):
@@ -304,9 +342,30 @@ class LDA:
         return lda._lda._loglikelihood(nzw, ndz, nz, nd, alpha, eta)
 
     def _sample_topics(self, rands):
-        """Samples all topic assignments. Called once per iteration."""
+        """Samples all topic assignments. Called once per iteration.
+
+            WS: lista con cada palabra entre todos los documentos
+            DS: lista con el documento asociado a cada palabra
+            ZS: lista con el tópico asociaddo a cada palabra
+            nzw: Matriz de tópicos (filas) por palabras (columna)
+            ndz: Matriz de documento por tópico
+            nz: Lista, cantidad de palabras asignadas al tópico
+        """
         n_topics, vocab_size = self.nzw_.shape
         alpha = np.repeat(self.alpha, n_topics).astype(np.float64)
         eta = np.repeat(self.eta, vocab_size).astype(np.float64)
         lda._lda._sample_topics(self.WS, self.DS, self.ZS, self.nzw_, self.ndz_, self.nz_,
                                 alpha, eta, rands)
+
+    def _sample_topics_interactive(self, rands):
+        """Samples all topic assignments with interactive formule. Called once per iteration.
+        Nuevas variables:
+            SW: lista con el seed asociaddo a cada palabra, -1 si no hay seed
+            nzs: Matriz de tópicos (filas) por seed (columna)
+            nu:  es una lista de tuplas, cada tupla es de la forma (nu, len(seed[s]))
+        """
+        n_topics, vocab_size = self.nzw_.shape
+        alpha = np.repeat(self.alpha, n_topics).astype(np.float64)
+        eta = np.repeat(self.eta, vocab_size).astype(np.float64)
+        lda._lda._sample_topics_interactive(self.WS, self.DS, self.ZS, self.nzw_, self.ndz_, self.nz_,
+                                            alpha, eta, rands, self.SW, self.nzs_, self.nu)
