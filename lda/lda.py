@@ -104,8 +104,8 @@ class LDA:
                  refresh=10, seed=[], mode=None, nu=0.04):
         self.n_topics = n_topics
         self.n_iter = n_iter
-        self.alpha = alpha
-        self.eta = eta
+        self.alpha = float(alpha)
+        self.eta = float(eta)
         # if random_state is None, check_random_state(None) does nothing
         # other than return the current numpy RandomState
         self.random_state = random_state
@@ -119,7 +119,8 @@ class LDA:
 
         self.mode = [None, "seeded", "interactive", "both"].index(mode)
         self.seed = seed
-        self.nu = np.matrix([[nu, len(x)] for x in seed])
+        self.nu = np.matrix([[float(nu), len(x)] for x in seed])
+
         # random numbers that are reused
         rng = lda.utils.check_random_state(random_state)
         self._rands = rng.rand(1024**2 // 8)  # 1MiB of random variates
@@ -295,6 +296,7 @@ class LDA:
         logger.info("n_words: {}".format(N))
         logger.info("n_topics: {}".format(n_topics))
         logger.info("n_iter: {}".format(n_iter))
+        logger.info("n_seeds: {}".format(n_seeds))
 
         self.nzw_ = nzw_ = np.zeros((n_topics, W), dtype=np.intc)
         self.ndz_ = ndz_ = np.zeros((D, n_topics), dtype=np.intc)

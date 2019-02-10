@@ -5,7 +5,7 @@
 
 from cython.operator cimport preincrement as inc, predecrement as dec
 from libc.stdlib cimport malloc, free
-
+from libc.stdio cimport printf
 
 cdef extern from "gamma.h":
     cdef double lda_lgamma(double x) nogil
@@ -150,6 +150,7 @@ def _sample_topics_interactive(int[:] WS, int[:] DS, int[:] ZS, int[:, :] nzw, i
     cdef int n_topics = nz.shape[0]
     cdef double eta_sum = 0
     cdef double nu_sum = 0
+    #cdef float aux;
     cdef double* dist_sum = <double*> malloc(n_topics * sizeof(double))
     if dist_sum is NULL:
         raise MemoryError("Could not allocate memory during sampling.")
@@ -170,13 +171,15 @@ def _sample_topics_interactive(int[:] WS, int[:] DS, int[:] ZS, int[:, :] nzw, i
             
             if (s >= 0):
                 nu_sum = nu[s, 0] * nu[s, 1]
-                dec(nzs[z, s]) # Desasignar seed al tópico.
+                dec(nzs[z, s]) # Desasignar seed al tópico. 
 
                 for k in range(n_topics):
                     dist_cum += (ndz[d, k] + alpha[k]) * (nzs[k, s] + nu[s, 1]*eta[w]) / (nz[k] + eta_sum) *  (nzw[k, w] + nu[s, 0]) / (nzs[k, s] + nu_sum)
+                    #aux = (nzw[k, w]) / (nzs[k, s] );
+                    #printf("%d %d -> %f -", nzw[k, w], nzs[k, s], aux);
                     dist_sum[k] = dist_cum
+                #printf("\n")
             else:
-                dist_cum = 0
                 for k in range(n_topics):
                     dist_cum += (ndz[d, k] + alpha[k]) * (nzw[k, w] + eta[w]) / (nz[k] + eta_sum) 
                     dist_sum[k] = dist_cum
@@ -189,7 +192,7 @@ def _sample_topics_interactive(int[:] WS, int[:] DS, int[:] ZS, int[:, :] nzw, i
             inc(ndz[d, z_new]) # Aumentar el tópico del documento
             inc(nz[z_new]) # Aumentar cantidad de palabras asociadas al tópico
             if (s >= 0):
-                inc(nzs[z, s]) # Aumentar el seed al tópico.
+                inc(nzs[z_new, s]) # Aumentar el seed al tópico.
 
         free(dist_sum)
 
