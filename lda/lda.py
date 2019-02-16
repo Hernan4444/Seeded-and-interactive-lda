@@ -254,12 +254,11 @@ class LDA:
             Training vector, where n_samples in the number of samples and
             n_features is the number of features. Sparse matrix allowed.
         """
-        # random_state = lda.utils.check_random_state(self.random_state)
+
         rands = self._rands.copy()
         self._initialize(X)
         for it in range(self.n_iter):
-            # FIXME: using numpy.roll with a random shift might be faster
-            # random_state.shuffle(rands)
+            
             rands = np.roll(rands, np.random.randint(1000))
             if it % self.refresh == 0:
                 ll = self.loglikelihood()
@@ -296,6 +295,7 @@ class LDA:
         logger.info("n_words: {}".format(N))
         logger.info("n_topics: {}".format(n_topics))
         logger.info("n_iter: {}".format(n_iter))
+        logger.info("mode: {}".format([None, "seeded", "interactive", "both"][self.mode]))
         logger.info("n_seeds: {}".format(n_seeds))
 
         self.nzw_ = nzw_ = np.zeros((n_topics, W), dtype=np.intc)
@@ -317,15 +317,17 @@ class LDA:
         for i in range(N):
             w, d = WS[i], DS[i]
 
-            # (1) Asignar el tópico según distribución dirichlet
-            # (2) Asignar el tópico según random
-            # (3) Asignar el tópico según i%n_topics
+            if (self.mode == 1 or self.mode == 3) and w in seed:
+                z_new = seed[w]
+                print(z_new)
+            else:
+                z_new = i % n_topics
 
-            z_new = i % n_topics
             ZS[i] = z_new  # pylint: disable=E1137
             ndz_[d, z_new] += 1
             nzw_[z_new, w] += 1
             nz_[z_new] += 1
+
             if self.mode >= 2 and w in seed:
                 SW[i] = seed[w]  # pylint: disable=E1137
                 nzs_[z_new, seed[w]] += 1
