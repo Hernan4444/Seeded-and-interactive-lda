@@ -319,7 +319,6 @@ class LDA:
 
             if (self.mode == 1 or self.mode == 3) and w in seed:
                 z_new = seed[w]
-                print(z_new)
             else:
                 z_new = i % n_topics
 
