@@ -57,3 +57,6 @@ docs/_build/
 
 # Project-specific
 .testrepository
+
+#Ignore makefile to not commit the changes from PYTHON to PYTHON3
+Makefile
