@@ -266,7 +266,7 @@ class LDA:
                 self.loglikelihoods_.append(ll)
             if self.mode == 0:
                 self._sample_topics(rands)
-            elif self.mode >= 2:
+            elif self.mode >= 1:
                 self._sample_topics_interactive(rands)
 
         ll = self.loglikelihood()
@@ -318,8 +318,10 @@ class LDA:
             w, d = WS[i], DS[i]
 
             if (self.mode == 1 or self.mode == 3) and w in seed:
+                # Seeded versión. Tomar el tópico inicial del seed
                 z_new = seed[w]
             else:
+                # Forma random
                 z_new = i % n_topics
 
             ZS[i] = z_new  # pylint: disable=E1137
@@ -328,6 +330,9 @@ class LDA:
             nz_[z_new] += 1
 
             if self.mode >= 2 and w in seed:
+                # Interactive versión. Guardar el seed
+                # para luego utiizar la probabilidad de la palabra
+                # En el seed
                 SW[i] = seed[w]  # pylint: disable=E1137
                 nzs_[z_new, seed[w]] += 1
 
