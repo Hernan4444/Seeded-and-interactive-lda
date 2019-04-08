@@ -295,7 +295,7 @@ class LDA:
         logger.info("n_words: {}".format(N))
         logger.info("n_topics: {}".format(n_topics))
         logger.info("n_iter: {}".format(n_iter))
-        logger.info("mode: {}".format([None, "seeded", "interactive", "both"][self.mode]))
+        logger.info("mode: {} - {}".format([None, "seeded", "interactive", "both"][self.mode], self.mode))
         logger.info("n_seeds: {}".format(n_seeds))
 
         self.nzw_ = nzw_ = np.zeros((n_topics, W), dtype=np.intc)
@@ -312,6 +312,8 @@ class LDA:
             for word in constrain:
                 seed[word] = index
 
+        logger.info("seeds: {}".format(seed))
+        
         np.testing.assert_equal(N, len(WS))
         np.testing.assert_equal(N, len(SW))
         for i in range(N):
